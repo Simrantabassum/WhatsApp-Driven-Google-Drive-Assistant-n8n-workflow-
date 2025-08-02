@@ -1,0 +1,181 @@
+# Sample WhatsApp Commands for Testing
+
+## Basic Commands
+
+### Help and Information
+HELP
+STATUS
+
+### List Files
+LIST /
+LIST /Documents
+LIST /ProjectX
+LIST /Archive
+
+### File Operations
+DELETE /Documents/test.pdf
+DELETE /ProjectX/report.docx
+MOVE /Documents/file.txt /Archive
+MOVE /ProjectX/presentation.pptx /Presentations
+
+### AI Summarization
+SUMMARY /Documents
+SUMMARY /ProjectX
+SUMMARY /Reports
+
+## Advanced Commands
+
+### Confirmation Commands
+CONFIRM DELETE
+
+### Status and Monitoring
+STATUS
+HEALTH
+
+## Test Scenarios
+
+### Scenario 1: Basic File Management
+1. LIST /Documents
+2. MOVE /Documents/old-file.pdf /Archive
+3. LIST /Archive
+
+### Scenario 2: AI Summarization
+1. SUMMARY /ProjectX
+2. LIST /ProjectX
+
+### Scenario 3: Safety Features
+1. DELETE /Documents/important-file.pdf
+2. CONFIRM DELETE
+
+### Scenario 4: Error Handling
+1. LIST /NonExistentFolder
+2. DELETE /NonExistentFile.pdf
+3. MOVE /file.txt /NonExistentDestination
+
+## Expected Responses
+
+### Successful LIST Response
+```
+📁 /Documents
+
+Files (3):
+1. 📄 document1.pdf (245KB)
+2. 📄 report.docx (1.2MB)
+3. 📁 subfolder
+```
+
+### Successful MOVE Response
+```
+✅ File Moved Successfully
+
+📁 file.txt has been moved:
+
+📍 From: /Documents/file.txt
+📍 To: /Archive
+```
+
+### Delete Confirmation Request
+```
+⚠️ Delete Confirmation Required
+
+Are you sure you want to delete:
+*important-file.pdf*
+
+Reply with: *CONFIRM DELETE*
+
+⚠️ This action cannot be undone!
+```
+
+### Help Response
+```
+🤖 WhatsApp Drive Assistant
+
+Commands:
+• LIST /folder - List files
+• DELETE /file - Delete file
+• MOVE /source /dest - Move file
+• SUMMARY /folder - AI summary
+• HELP - Show this message
+```
+
+### Error Response
+```
+❌ Error: Folder not found
+
+The folder '/NonExistentFolder' could not be found.
+Please check the folder name and try again.
+```
+
+## Testing Checklist
+
+### Basic Functionality
+- [ ] HELP command returns help text
+- [ ] LIST command shows files in folder
+- [ ] MOVE command moves files successfully
+- [ ] DELETE command requests confirmation
+- [ ] CONFIRM DELETE executes deletion
+
+### AI Features
+- [ ] SUMMARY command processes files
+- [ ] AI generates meaningful summaries
+- [ ] Handles different file types (PDF, DOCX, TXT)
+- [ ] Respects file size limits
+
+### Error Handling
+- [ ] Invalid commands return helpful error messages
+- [ ] Non-existent files/folders handled gracefully
+- [ ] Missing arguments provide usage instructions
+- [ ] API errors are communicated clearly
+
+### Security Features
+- [ ] Delete operations require confirmation
+- [ ] Sensitive information not exposed in responses
+- [ ] Input validation prevents injection attacks
+
+### Performance
+- [ ] Responses received within reasonable time
+- [ ] Large file lists handled efficiently
+- [ ] AI summarization completes in acceptable time
+
+## Troubleshooting Commands
+
+### Debug Information
+STATUS
+HEALTH
+VERSION
+
+### Manual Testing
+```
+# Test webhook directly
+curl -X POST http://localhost:5678/webhook/whatsapp \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "From=whatsapp:+1234567890&Body=HELP"
+```
+
+### Log Checking
+```bash
+# Check n8n logs
+./scripts/start.sh logs
+
+# Check specific execution
+# (Use n8n interface to view execution logs)
+```
+
+## Performance Benchmarks
+
+### Expected Response Times
+- HELP command: < 2 seconds
+- LIST command: < 5 seconds
+- MOVE command: < 10 seconds
+- DELETE command: < 3 seconds
+- SUMMARY command: < 30 seconds
+
+### File Size Limits
+- Maximum file size for summarization: 10MB
+- Maximum files in list response: 50
+- Maximum summary length: 1000 characters
+
+### Rate Limits
+- Maximum requests per minute: 60
+- Maximum concurrent operations: 5
+- Webhook timeout: 30 seconds 
