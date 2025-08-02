@@ -1,0 +1,85 @@
+# Docker Compose configuration for WhatsApp Drive Assistant
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: whatsapp-drive-assistant
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic n8n configuration
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-admin123}
+      
+      # Database configuration (SQLite for simplicity)
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+      
+      # Webhook configuration
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=${N8N_PORT:-5678}
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      
+      # Security and performance
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your-encryption-key-here}
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - N8N_LOG_LEVEL=${LOG_LEVEL:-info}
+      - N8N_RUNNERS_ENABLED=true
+      
+      # External integrations
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      
+      # Workflow specific
+      - MAX_FILE_SIZE_FOR_SUMMARY=${MAX_FILE_SIZE_FOR_SUMMARY:-10485760}
+      - ALLOWED_SUMMARY_TYPES=${ALLOWED_SUMMARY_TYPES:-pdf,docx,txt,md}
+      - CONFIRMATION_TIMEOUT=${CONFIRMATION_TIMEOUT:-300}
+      - ENABLE_AUDIT_LOGGING=${ENABLE_AUDIT_LOGGING:-true}
+      - AUDIT_SHEET_ID=${AUDIT_SHEET_ID}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - ALLOWED_PHONE_NUMBERS=${ALLOWED_PHONE_NUMBERS}
+      
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflow.json:/home/node/.n8n/workflows/workflow.json:ro
+      - ./data:/app/data
+      
+    networks:
+      - n8n-network
+      
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: ngrok for exposing local n8n to internet
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: n8n-ngrok
+    restart: unless-stopped
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+    command: http n8n:5678
+    depends_on:
+      - n8n
+    networks:
+      - n8n-network
+    profiles:
+      - expose
+
+volumes:
+  n8n_data:
+    driver: local
+
+networks:
+  n8n-network:
+    driver: bridge 

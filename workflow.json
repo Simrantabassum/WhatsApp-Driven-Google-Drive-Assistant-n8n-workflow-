@@ -1,0 +1,645 @@
+{
+  "name": "WhatsApp Google Drive Assistant",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/whatsapp",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-node",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "whatsapp-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json;\nconst message = {\n  from: body.From || body.from,\n  body: (body.Body || body.body || '').toString(),\n  timestamp: new Date().toISOString()\n};\n\nconst command = message.body.trim().toUpperCase();\nconst parts = command.split(' ');\nconst action = parts[0];\nconst args = parts.slice(1);\n\n// Handle HELP command\nif (action === 'HELP') {\n  return {\n    json: {\n      success: true,\n      response: '🤖 *WhatsApp Drive Assistant*\\n\\n*Commands:*\\n• LIST /folder - List files\\n• DELETE /file - Delete file (requires CONFIRM)\\n• MOVE /source /dest - Move file\\n• SUMMARY /folder - AI summary\\n• CONFIRM DELETE - Confirm deletion\\n• HELP - Show this message',\n      action: 'HELP',\n      originalMessage: message\n    }\n  };\n}\n\n// Handle CONFIRM DELETE\nif (action === 'CONFIRM' && args[0] === 'DELETE') {\n  return {\n    json: {\n      success: true,\n      action: 'CONFIRM_DELETE',\n      args: args.slice(1),\n      originalMessage: message\n    }\n  };\n}\n\nreturn {\n  json: {\n    success: true,\n    action: action,\n    args: args,\n    originalMessage: message\n  }\n};"
+      },
+      "id": "parse-command",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "LIST",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "action-router",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "search",
+        "folderId": "={{ $json.args[0] || 'root' }}",
+        "options": {
+          "q": "trashed=false",
+          "fields": "files(id,name,mimeType,size,modifiedTime)"
+        }
+      },
+      "id": "list-files",
+      "name": "List Files",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [900, 200],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-cred",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.first().json.files || [];\nconst folderPath = $('Parse Command').first().json.args[0] || 'root';\n\nif (files.length === 0) {\n  return {\n    json: {\n      success: true,\n      response: `📁 *${folderPath}*\\n\\nNo files found.`\n    }\n  };\n}\n\nlet response = `📁 *${folderPath}*\\n\\n*Files (${files.length}):*\\n`;\n\nfiles.forEach((file, index) => {\n  const icon = file.mimeType.includes('folder') ? '📁' : '📄';\n  const size = file.size ? ` (${Math.round(file.size/1024)}KB)` : '';\n  response += `${index + 1}. ${icon} *${file.name}*${size}\\n`;\n});\n\nreturn {\n  json: {\n    success: true,\n    response: response\n  }\n};"
+      },
+      "id": "format-list",
+      "name": "Format List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "DELETE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "delete-router",
+      "name": "Route DELETE",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const filePath = $('Parse Command').first().json.args[0];\nconst response = `⚠️ *Safety Check Required*\\n\\nYou're about to delete: *${filePath}*\\n\\nTo confirm deletion, send:\\n*CONFIRM DELETE ${filePath}*\\n\\nThis action cannot be undone.`;\n\nreturn {\n  json: {\n    success: true,\n    response: response,\n    requiresConfirmation: true,\n    pendingDelete: filePath\n  }\n};"
+      },
+      "id": "delete-confirmation",
+      "name": "Delete Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "CONFIRM_DELETE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "confirm-delete-router",
+      "name": "Route Confirm Delete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "delete",
+        "fileId": "={{ $json.args[0] }}"
+      },
+      "id": "delete-file",
+      "name": "Delete File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [900, 500],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-cred",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const filePath = $('Parse Command').first().json.args[0];\nconst response = `✅ *File Deleted Successfully*\\n\\nDeleted: *${filePath}*\\n\\nThe file has been permanently removed from Google Drive.`;\n\nreturn {\n  json: {\n    success: true,\n    response: response\n  }\n};"
+      },
+      "id": "delete-success",
+      "name": "Delete Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "MOVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "move-router",
+      "name": "Route MOVE",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 600]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "update",
+        "fileId": "={{ $json.args[0] }}",
+        "updateFields": {
+          "parents": "={{ $json.args[1] }}"
+        }
+      },
+      "id": "move-file",
+      "name": "Move File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [900, 600],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-cred",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sourcePath = $('Parse Command').first().json.args[0];\nconst destPath = $('Parse Command').first().json.args[1];\nconst response = `✅ *File Moved Successfully*\\n\\nMoved: *${sourcePath}*\\nTo: *${destPath}*\\n\\nThe file has been moved to the new location.`;\n\nreturn {\n  json: {\n    success: true,\n    response: response\n  }\n};"
+      },
+      "id": "move-success",
+      "name": "Move Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "SUMMARY",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "summary-router",
+      "name": "Route SUMMARY",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 700]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "search",
+        "folderId": "={{ $json.args[0] }}",
+        "options": {
+          "q": "trashed=false and (mimeType contains 'text/' or mimeType contains 'application/pdf' or mimeType contains 'application/vnd.openxmlformats-officedocument')",
+          "fields": "files(id,name,mimeType,size)"
+        }
+      },
+      "id": "get-summary-files",
+      "name": "Get Summary Files",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 2,
+      "position": [900, 700],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-cred",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a helpful assistant that summarizes documents. Provide concise, informative summaries."
+            },
+            {
+              "role": "user",
+              "content": "Please summarize the following documents:\\n\\n{{ $json.content }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 500
+        }
+      },
+      "id": "generate-summary",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1120, 700],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-cred",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $('Get Summary Files').first().json.files || [];\nconst summary = $('Generate Summary').first().json.choices[0].message.content;\nconst folderPath = $('Parse Command').first().json.args[0];\n\nif (files.length === 0) {\n  const response = `📁 *${folderPath}*\\n\\nNo summarizable files found.\\n\\nSupported formats: PDF, DOCX, TXT, MD`;\n  return { json: { success: true, response: response } };\n}\n\nlet response = `📁 *${folderPath}* - AI Summary\\n\\n*Files analyzed (${files.length}):*\\n`;\nfiles.forEach((file, index) => {\n  response += `${index + 1}. ${file.name}\\n`;\n});\n\nresponse += `\\n*Summary:*\\n${summary}`;\n\nreturn {\n  json: {\n    success: true,\n    response: response\n  }\n};"
+      },
+      "id": "format-summary",
+      "name": "Format Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $('Parse Command').first().json.action;\nconst args = $('Parse Command').first().json.args;\nconst message = $('Parse Command').first().json.originalMessage;\n\n// Create audit log entry\nconst auditEntry = {\n  timestamp: new Date().toISOString(),\n  user: message.from,\n  action: action,\n  args: args,\n  status: 'executed'\n};\n\n// In a real implementation, you would save this to a database or Google Sheets\nconsole.log('AUDIT LOG:', JSON.stringify(auditEntry));\n\nreturn {\n  json: {\n    success: true,\n    auditEntry: auditEntry\n  }\n};"
+      },
+      "id": "audit-log",
+      "name": "Audit Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "{{ $env.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $('Parse Command').first().json.originalMessage.from }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.response }}"
+            }
+          ]
+        }
+      },
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "twilio-cred",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, message: 'WhatsApp message processed' } }}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Command": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route DELETE",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route Confirm Delete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route MOVE",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route SUMMARY",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "List Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Files": {
+      "main": [
+        [
+          {
+            "node": "Format List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format List Response": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route DELETE": {
+      "main": [
+        [
+          {
+            "node": "Delete Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Confirm Delete": {
+      "main": [
+        [
+          {
+            "node": "Delete File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete File": {
+      "main": [
+        [
+          {
+            "node": "Delete Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Success": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route MOVE": {
+      "main": [
+        [
+          {
+            "node": "Move File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move File": {
+      "main": [
+        [
+          {
+            "node": "Move Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Success": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route SUMMARY": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Summary Files": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Format Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Summary": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "id": "whatsapp-drive-assistant",
+      "name": "WhatsApp Drive Assistant"
+    }
+  ],
+  "triggerCount": 1,
+  "versionId": "1"
+} 
